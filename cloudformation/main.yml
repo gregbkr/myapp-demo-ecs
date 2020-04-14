@@ -1,0 +1,235 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  GithubRepo:
+    Description: Github repository name for codebuild
+    Type: String
+    Default: "https://github.com/gregbkr/myapp-demo-ecs"
+  EcrRepo:
+    Description: ECR Repository in AWS
+    Type: String
+    Default: "myapp-demo-hello"
+  ProjectName:
+    Description: CodeBuild project name
+    Type: String
+    Default: "myapp-demo-ecs"
+  AppName: 
+    Description: Name of the app
+    Type: String
+    Default: "hello"
+  AppContainerPort:
+    Description: Port of the app
+    Type: String
+    Default: "8080"
+  Image: 
+    Description: ECR image location
+    Type: String
+    Default: "391378411314.dkr.ecr.eu-west-1.amazonaws.com/myapp-demo-hello"
+
+Resources:
+
+  Project:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      Description: CodeBuild created via cloudformation
+      ServiceRole: !Ref 'CodeBuildRole'
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+      Source:
+        Location: !Ref GithubRepo
+        Type: GITHUB
+      TimeoutInMinutes: 10
+      Tags:
+        - Key: Key1
+          Value: Value1
+        - Key: Key2
+          Value: Value2
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/develop$
+          - - Type: EVENT
+              Pattern: PUSH
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/master$
+
+  CodeBuildRole:
+    Description: serverless demo hello role in IAM for AWS CodeBuild
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Path: /
+      RoleName: !Ref ProjectName
+    Type: AWS::IAM::Role
+
+  CodeBuildPolicy:
+    Description: Setting IAM policy for service role for CodeBuild
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:*
+          - ecr:*
+          - ecs:*
+          - codebuild:*
+          Effect: Allow
+          Resource: '*'
+      PolicyName: !Ref ProjectName
+      Roles:
+      - !Ref 'CodeBuildRole'
+    Type: AWS::IAM::Policy
+
+  Ecr: 
+    Type: AWS::ECR::Repository
+    Properties: 
+      RepositoryName: !Ref EcrRepo
+      RepositoryPolicyText: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Sid: AllowPushPull
+            Effect: Allow
+            Principal: 
+              AWS: 
+                - !GetAtt CodeBuildRole.Arn
+            Action: 
+            - "ecr:GetDownloadUrlForLayer"
+            - "ecr:BatchGetImage"
+            - "ecr:BatchCheckLayerAvailability"
+            - "ecr:PutImage"
+            - "ecr:InitiateLayerUpload"
+            - "ecr:UploadLayerPart"
+            - "ecr:CompleteLayerUpload"
+
+# ECS
+  EcsTaskExecutionRole:
+    Description: Role use by fargate ECS to run container
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: ecs.amazonaws.com
+      Path: /
+      RoleName: myapp-demo-ecs-execute-container
+    Type: AWS::IAM::Role
+
+  taskdefinition: 
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      RequiresCompatibilities: 
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
+      ContainerDefinitions: 
+        - 
+          Name: !Ref AppName
+          Image: !Ref Image
+          Essential: true
+          PortMappings: 
+            - 
+              ContainerPort: 8080
+              Protocol: tcp
+  
+  EcsCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: myapp-demo-ecs
+
+  EcsService: 
+    Type: AWS::ECS::Service
+    Properties: 
+      Cluster: 
+        Ref: EcsCluster
+      LaunchType: FARGATE
+      DesiredCount: "1"
+      TaskDefinition: 
+        Ref: "taskdefinition"
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref SecurityGroup
+          Subnets: 
+            - subnet-4756311d
+            - subnet-8efea4e8
+            - subnet-ca0e3b82
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - ContainerName: !Ref AppName
+          ContainerPort: !Ref AppContainerPort
+          TargetGroupArn:
+            Ref: TargetGroup
+
+# ELB
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: myapp-demo-lb
+      GroupDescription: Allow http+s to client host
+      VpcId: vpc-a2826adb
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 0
+        CidrIp: 0.0.0.0/0
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: myapp-demo-lb
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Subnets: 
+        - subnet-4756311d
+        - subnet-8efea4e8
+        - subnet-ca0e3b82
+      Type: application
+
+  HTTPlistener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+        - Type: "forward"
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: myapp-ecs-tg
+      VpcId: vpc-a2826adb
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+
+Outputs:
+  userArn:
+    Value: !GetAtt CodeBuildRole.Arn
+    Description: Codebuild user ARN
