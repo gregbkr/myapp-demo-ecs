@@ -1,52 +1,80 @@
-# MyApp: a container in ECS
+# MyApp: HA container in ECS
 
 ## Overview
-- ECR: container registry
-- CI: Codebuild build container and update task in ECS
-- ECS: run container
-- API gateway: to publish the app
-- Infra as code: cloud formation
+This setup will deploy a redundant helloworld container on ECS fargate, with automatic CI/CD from AWS.
+More info: you can find an overview of that setup on my [blog](https://greg.satoshi.tech/ci-cd-on-aws-elastic-container-service-ecs/)
 
-## Init 
+### Infra
+![Infra](./.github/images/myapp-ecs-infra.png)
 
-- Set AWS to deploy in `eu-west-1`: `nano ~/.aws/config`
-- First create the infra (Codebuild project & IAM role & S3 for SAM):
+- Cloud: AWS
+- [ECS](https://aws.amazon.com/ecs): container orchestrator (on 2 availability zones for redundancy)
+- [ECR](https://aws.amazon.com/ecr): container registry to store hello image
+- App: a simple hello world in nodejs (folder `hello`)
+- Code source: github
+- Deployment: [CloudFormation](https://aws.amazon.com/cloudformation) describe all component to be deployed. One command line will setup 
+- CI/CD: [Codepipeline](https://aws.amazon.com/codepipeline) to buid and deploy the container in ECS
+the infra and return an url to access the application.
 
+### CI/CD flow diagram
+
+![CI/CD](./.github/images/myapp-ecs-cicd.png)
+A simple `git push` from a developer in Github will launch the whole CI/CD process. Docker image will build and ECS will update to run that new image without any downtime.
+
+## Deploy
+
+### Prerequisites
+Please setup on your laptop:
+- AWS cli and AWS account to deploy in `eu-west-1`
+- Docker and Compose
+- Github personal token with `admin:repo_hook, repo` rights from [here](https://github.com/settings/tokens)
+
+
+### Test app on your laptop
+Check the app locally:
+```
+cd hello
+docker-compose up -d
+curl localhost 8080
+```
+
+### Deploy to AWS
+- Set a unique project prefix, and deploy the infra:
 ```
 cd cloudformation
-nano main.yml <-- edit with your needs
-aws cloudformation create-stack --stack-name myapp-demo-ecs-infra-init --template-body file://main.yml --capabilities CAPABILITY_NAMED_IAM
-... update-stack ... <-- if already created
+export CF_DEMO_ENVIRONMENT=myapp-demo-ecs   <-- please change to your prefix!
+./deploy.sh ${CF_DEMO_ENVIRONMENT} [GH username] [GH repo] [GH branch] [GH token]
+
+Example:
+./deploy.sh ${CF_DEMO_ENVIRONMENT} gregbkr myapp-demo-ecs master 21414af27e9f3f2eccaf68554459b5a8e1d17c5b
 ```
 
-## Deploy API
-
-### Deploy manually
-- Follow code in buildspec.yml to deploy manually (or use local build, see in annexes).
-
-### Deploy via CI
-- Edit ci with your needs: `nano buildspec.yml`
-- Push code to master or develop for auto CI/CD
+- Wait for the script to complete. If it takes more than 20 minutes, check cloudformation waiting component in event. It may be ECS who is wainting for the container to be up. Please check that the build was successful and the image present in ECR.
 
 ### Check
-- You will get the url from the output of `sam deploy...`
+- Export both values:
+```
+export APP_URL=$(aws cloudformation \
+   describe-stacks \
+   --query 'Stacks[0].Outputs[?OutputKey==`WebServiceUrl`].OutputValue' \
+   --stack-name ${CF_DEMO_ENVIRONMENT})
+
+export CI_URL=$(aws cloudformation \
+   describe-stacks \
+   --query 'Stacks[0].Outputs[?OutputKey==`PipelineUrl`].OutputValue' \
+   --stack-name ${CF_DEMO_ENVIRONMENT}
+```
+- Check the app with: `curl $APP_URL`
+
+### CI-CD
+- Change the ouput of the helloworld here: `nano hello/server.js` 
+- Push code in github
+- Check the status of CI-CD in your browser: `echo $CI_URL` 
+- Then check again your app: `curl $APP_URL`
 
 
-## Destroy all
-- Destroy using the right region: `aws cloudformation delete-stack --stack-name <YOUR_STACK_NAME> --region eu-west-1`
-
-Todo:
-- [ ] Cloudformation init (erc, codebuild, ecs)
-- [ ] Build container
-- [ ] CI update container
-- [ ] Plug with API gateway
-- [ ] Dev + Prod
+### Destroy all
+- Destroy using the right region: `./delete-stacks.sh ${CF_DEMO_ENVIRONMENT}`
 
 
-## Annexes
-
-### Local Codebuild: 
-- Download + build docker [here](https://github.com/aws/aws-codebuild-docker-images/tree/master/ubuntu/standard/3.0)
-- Download codebuild_build.sh [here](https://github.com/aws/aws-codebuild-docker-images/blob/master/local_builds/codebuild_build.sh)
-- Edit `.env` to set the version to deploy [develop|master]
-- Run local build: `./codebuild_build.sh -i aws/codebuild/standard:3.0 -a /tmp/artifacts -s . -e .env.production -c`
+<em>Thank you [laser team](https://github.com/laser/cloudformation-fargate-codepipeline-ecs-refarch) for the bootstrap code!</em>
