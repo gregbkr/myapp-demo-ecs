@@ -20,6 +20,8 @@ Parameters:
         Type: String
     GitHubToken:
         Type: String
+    ServiceArn:
+        Type: String
 
 Resources:
     ImageRepository:
@@ -55,8 +57,10 @@ Resources:
             TemplateURL: !Sub ${S3TemplateKeyPrefix}deployment-pipeline.yml
             Parameters:
                 EnvironmentName: !Ref AWS::StackName
-                ClusterName: !GetAtt EcsCluster.Outputs.EcsClusterName
-                ServiceArn: !GetAtt EcsCluster.Outputs.EcsServiceArn
+                #ClusterName: !GetAtt EcsCluster.Outputs.EcsClusterName
+                ClusterName: !Ref AWS::StackName
+                #ServiceArn: !GetAtt EcsCluster.Outputs.EcsServiceArn
+                ServiceArn: !Ref ServiceArn
                 RepositoryArn: !GetAtt ImageRepository.Outputs.RepositoryArn
                 RepositoryUri: !GetAtt ImageRepository.Outputs.RepositoryUri
                 GitHubUser: !Ref GitHubUser
@@ -95,3 +99,7 @@ Outputs:
     PipelineUrl:
         Description: The continuous deployment pipeline in the AWS Management Console.
         Value: !GetAtt DeploymentPipeline.Outputs.PipelineUrl
+
+    EcsServiceArn:
+        Description: The Arn of ECS services
+        Value: !GetAtt EcsCluster.Outputs.EcsServiceArn

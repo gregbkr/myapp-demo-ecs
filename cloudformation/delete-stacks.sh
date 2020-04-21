@@ -9,15 +9,18 @@ TEMPLATE_STORAGE_STACK_NAME=${ENV_NAME_ARG}-template-storage
 
 
 ###############################################################################
-# Delete the S3 bucket used to store Cloud Formation templates. Cloud Formation
-# won't delete a stack which provisioned an S3 bucket which is non-empty - so
-# this must happen first.
+# Delete the S3 bucket used to store Cloud Formation templates and pipeline 
+# artifact. Cloud Formation won't delete a stack which provisioned an S3 bucket
+# which is non-empty - so this must happen first.
 #
 
 if aws s3 ls s3://${ENV_NAME_ARG}; then
     aws s3 rb s3://${ENV_NAME_ARG} --force || true
 fi
 
+if aws s3 ls s3://${ENV_NAME_ARG}-pipeline; then
+    aws s3 rb s3://${ENV_NAME_ARG}-pipeline --force || true
+fi
 
 ###############################################################################
 # Delete the ECR which holds our application's images. This must happen before

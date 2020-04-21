@@ -6,6 +6,7 @@ GITHUB_USERNAME=$2
 GITHUB_REPO=$3
 GITHUB_BRANCH=$4
 GITHUB_TOKEN=$5
+ECS_SERVICE_ARN=$6
 
 ###############################################################################
 # Create an S3 stack which holds our CloudFormation templates and an ECR stack
@@ -45,6 +46,7 @@ aws cloudformation deploy \
         GitHubToken=${GITHUB_TOKEN} \
         GitHubUser=${GITHUB_USERNAME} \
         GitHubBranch=${GITHUB_BRANCH} \
-        S3TemplateKeyPrefix=https://s3.amazonaws.com/${ENV_NAME_ARG}/cloudformation/templates/
+        S3TemplateKeyPrefix=https://s3.amazonaws.com/${ENV_NAME_ARG}/cloudformation/templates/ \
+        ServiceArn=${ECS_SERVICE_ARN}
 
 echo "$(date):create:${ENV_NAME_ARG}:success"

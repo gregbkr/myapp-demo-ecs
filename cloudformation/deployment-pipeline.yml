@@ -1,4 +1,3 @@
-
 Parameters:
     EnvironmentName:
       Type: String
@@ -97,9 +96,13 @@ Resources:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                   - iam:PassRole
+
   ArtifactBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
+    #DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub ${EnvironmentName}-pipeline
+
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -122,10 +125,12 @@ Resources:
                 - echo Build started on `date`
                 - echo Building the Docker image... 
                 - docker build -t $REPOSITORY_URI:$TAG hello
+                - docker tag $REPOSITORY_URI:$TAG $REPOSITORY_URI:latest
             post_build:
               commands:
                 - echo Pushing the Docker image...
                 - docker push $REPOSITORY_URI:$TAG
+                - docker push $REPOSITORY_URI:latest
                 - echo Writing image definitions file...
                 - printf '[{"name":"${EnvironmentName}","imageUri":"%s"}]' "$REPOSITORY_URI:$TAG" > images.json
           artifacts:
@@ -141,6 +146,7 @@ Resources:
             Value: !Ref RepositoryUri
       Name: !Ref AWS::StackName
       ServiceRole: !Ref CodeBuildServiceRole
+
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
