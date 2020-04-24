@@ -48,8 +48,10 @@ export CF_DEMO_ENVIRONMENT=myapp-demo-ecs   <-- please change to your prefix!
 export GITHUB_TOKEN=xxxx                    <-- You token here
 ```
 
-- Because CodePipeline needs to know the ECS ARN, and ECS need CodePipeline to build the image, to run an ECS task, we are deploying the infra in 2 steps
-- 1. Deploy infra with a dummy `ECS Service Arn`=REPLACE_AFTER_ECS_DEPLOYED
+- Because CodePipeline needs to know the ECS ARN, and ECS needs CodePipeline to build the image to run an ECS task, we are deploying the infra in 2 steps
+
+#### Step 1
+ - Deploy infra with a dummy `ECS Service Arn`=REPLACE_AFTER_ECS_DEPLOYED
 ```
 ./deploy.sh ${CF_DEMO_ENVIRONMENT} [GH username] [GH repo] [GH branch] [GH token] [ECS Service Arn]
 
@@ -66,7 +68,9 @@ export ECS_SERVICE_ARN=$(aws cloudformation \
    --query 'Stacks[0].Outputs[?OutputKey==`EcsServiceArn`].OutputValue' \
    --stack-name ${CF_DEMO_ENVIRONMENT})
 ```
-- 2. Then update the stack, it will link CodeDeploy to the Ecs Service Arn
+
+#### Step 2
+- Then update the stack, it will link CodeDeploy to the Ecs Service Arn
 ```
 ./deploy.sh ${CF_DEMO_ENVIRONMENT} gregbkr myapp-ecs master ${GITHUB_TOKEN} ${ECS_SERVICE_ARN}
 ```
